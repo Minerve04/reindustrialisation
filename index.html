@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cartographie de l'industrie — par arrondissement (France)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --vert:#2f8f6b;--vert-s:#e8f3ee;--rouge:#cf5b4d;--rouge-s:#f8ebe8;
+    --bleu:#2b5f77;--bleu-d:#1e4557;--accent:#2b5f77;
+    --ink:#1d2126;--ink-2:#6a6f77;--muted:#9a9c9a;
+    --bg:#f3f0ea;--card:#ffffff;--bord:#eae5db;--bord-2:#f0ece4;
+    --shadow:0 1px 3px rgba(35,32,26,.03),0 12px 34px rgba(35,32,26,.055);
+    --radius:20px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+  /* Header */
+  header{padding:18px 30px;background:var(--card);border-bottom:1px solid var(--bord);display:flex;align-items:center;gap:18px}
+  .brand{width:42px;height:42px;border-radius:14px;flex:0 0 auto;background:linear-gradient(135deg,var(--bleu),var(--vert));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:19px;box-shadow:var(--shadow)}
+  header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.02em}
+  header p{margin:4px 0 0;font-size:12.5px;color:var(--ink-2);max-width:920px;line-height:1.5}
+  .pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--bg);color:var(--ink-2);margin-left:6px;vertical-align:middle;letter-spacing:.02em}
+  #main{display:flex;height:calc(100% - 70px)}
+  #left{flex:1;min-width:0;display:flex;flex-direction:column;padding:14px 14px 14px 16px;gap:14px}
+  #map{flex:1 1 60%;min-height:260px;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--bord)}
+  .leaflet-container{font-family:inherit}
+  #chartbox{flex:0 0 38%;background:var(--card);border:1px solid var(--bord);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 16px 4px;display:flex;flex-direction:column}
+  #chartbox h3{margin:0;font-size:13.5px;font-weight:700}
+  #chartbox .sub{font-size:11.5px;color:var(--ink-2);margin:2px 0 4px}
+  #chart{flex:1;width:100%;min-height:0}
+  /* Sidebar */
+  aside{width:352px;flex:0 0 auto;background:var(--bg);overflow-y:auto;padding:16px 18px 48px}
+  .panel{background:var(--card);border:1px solid var(--bord);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 19px;margin-bottom:14px}
+  .panel h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px;font-weight:700}
+  label.fld{display:block;font-size:11px;color:var(--ink-2);font-weight:600;margin:0 0 3px}
+  select{font-size:13px;padding:10px 12px;border:1px solid var(--bord);border-radius:12px;background:#fff;width:100%;margin:0 0 9px;color:var(--ink);font-family:inherit;transition:border-color .15s,box-shadow .15s;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238a95a4' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+  select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(43,95,119,.15)}
+  button{font-size:13px;padding:11px 16px;border:1px solid var(--bord);border-radius:999px;background:#fff;cursor:pointer;font-weight:600;font-family:inherit;color:var(--ink);transition:transform .06s,background .15s,box-shadow .15s}
+  button:hover{background:#faf8f4}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%;box-shadow:0 4px 14px rgba(43,95,119,.26)}
+  button.primary:hover{background:var(--bleu-d)}
+  button:disabled{opacity:.55;cursor:default}
+  .kpi{display:flex;gap:9px}
+  .kpi div{flex:1;background:var(--bg);border:1px solid var(--bord);border-radius:14px;padding:12px 11px;text-align:center}
+  .kpi .n{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  .kpi .l{font-size:10px;color:var(--ink-2);margin-top:2px;font-weight:500}
+  .row{display:flex;align-items:center;gap:9px;margin:9px 0;font-size:13px;cursor:pointer}
+  .row input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+  .row label{cursor:pointer}
+  .dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(0,0,0,.12)}
+  .dot.v{background:var(--vert)}.dot.r{background:var(--rouge)}.dot.b{background:var(--bleu)}.dot.g{background:var(--muted)}
+  .yr{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
+  .yr select{width:auto;margin:0;padding:8px 26px 8px 10px}
+  .note{font-size:12px;line-height:1.55;background:#fff9ec;border:1px solid #f2e4b8;border-radius:11px;padding:11px 12px;color:#5c4d1f}
+  .def{font-size:12.5px;line-height:1.6;color:var(--ink-2)}
+  .def b{color:var(--ink)}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px}
+  .chip{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--vert-s);color:var(--vert)}
+  .chip.no{background:var(--rouge-s);color:var(--rouge)}
+  .src{font-size:11px;line-height:1.6;color:var(--muted)}.src a{color:var(--bleu);text-decoration:none}.src a:hover{text-decoration:underline}
+  #status{font-size:12px;color:var(--ink-2);margin:2px 0 10px;min-height:16px;line-height:1.4}
+  .lp{font-size:13px;line-height:1.5}.lp b{font-size:13.5px}.lp a{color:var(--bleu)}
+  .bar-c{fill:var(--vert)}.bar-f{fill:var(--rouge)}.axis{stroke:#dbe1e9;stroke-width:1}
+  .glab{font-size:10px;fill:var(--muted)}.gyr{font-size:10px;fill:var(--ink-2)}
+  .btns{display:flex;gap:8px}
+  .btns button{flex:1}
+  /* Modal */
+  #modal{position:fixed;inset:0;background:rgba(16,26,40,.5);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:1000;padding:28px}
+  #modal.open{display:flex}
+  .mcard{background:#fff;border-radius:16px;max-width:1040px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+  .mhead{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--bord)}
+  .mhead h3{margin:0;font-size:15px;font-weight:700}
+  .mhead .x{cursor:pointer;font-size:22px;color:var(--muted);background:none;border:none;width:auto;padding:0 6px;line-height:1}
+  .mbody{overflow:auto;padding:0}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--bord-2);white-space:nowrap}
+  th{position:sticky;top:0;background:#f7f9fb;cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-2);font-weight:700;z-index:1}
+  td.wrap{white-space:normal;min-width:220px}
+  tr:hover td{background:#f9fbfd}
+  .tag{font-size:10.5px;padding:2px 9px;border-radius:20px;font-weight:600}
+  .tag.a{background:var(--vert-s);color:var(--vert)}.tag.c{background:var(--rouge-s);color:var(--rouge)}
+  td a{color:var(--bleu);text-decoration:none}td a:hover{text-decoration:underline}
+  /* Scrollbars */
+  aside::-webkit-scrollbar,.mbody::-webkit-scrollbar{width:9px;height:9px}
+  aside::-webkit-scrollbar-thumb,.mbody::-webkit-scrollbar-thumb{background:#cfd6df;border-radius:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">◧</div>
+  <div>
+    <h1>Cartographie de l'industrie — par arrondissement <span class="pill">France · beta</span></h1>
+    <p>Choisis un département puis un arrondissement : l'outil charge en direct les sites industriels actifs et cessés, les procédures collectives récentes, et trace créations vs fermetures sur 10 ans. 100 % navigateur, données publiques gratuites.</p>
+  </div>
+</header>
+
+<div id="main">
+  <div id="left">
+    <div id="map"></div>
+    <div id="chartbox">
+      <h3>Créations vs fermetures par an <span id="ztitle" class="pill">—</span></h3>
+      <p class="sub">Vert = créations · rouge = fermetures · période sélectionnée surlignée.</p>
+      <svg id="chart" viewBox="0 0 900 230" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div>
+
+  <aside>
+    <div class="panel">
+      <h2>Zone à explorer</h2>
+      <label class="fld" for="dep">Département</label>
+      <select id="dep"><option value="">Département…</option></select>
+      <label class="fld" for="arr">Arrondissement</label>
+      <select id="arr"><option value="">Arrondissement…</option></select>
+      <button id="load" class="primary">Charger la zone</button>
+      <div id="status">Sélectionne une zone pour commencer.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Volume sur la période</h2>
+      <div class="yr">de <select id="ymin"></select> à <select id="ymax"></select></div>
+      <div class="kpi" style="margin-top:12px">
+        <div><div class="n" id="k-crea" style="color:var(--vert)">–</div><div class="l">Créations</div></div>
+        <div><div class="n" id="k-ferm" style="color:var(--rouge)">–</div><div class="l">Fermetures</div></div>
+        <div><div class="n" id="k-net">–</div><div class="l">Solde net</div></div>
+      </div>
+      <div class="btns" style="margin-top:12px">
+        <button id="btn-list">📋 Liste</button>
+        <button id="btn-csv">⬇︎ Export Excel</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Couches affichées</h2>
+      <div class="row"><input type="checkbox" id="c-crea" checked><span class="dot v"></span><label for="c-crea">Créations (période)</label></div>
+      <div class="row"><input type="checkbox" id="c-ferm" checked><span class="dot r"></span><label for="c-ferm">Fermetures (période)</label></div>
+      <div class="row"><input type="checkbox" id="c-actif"><span class="dot g"></span><label for="c-actif">Tous les sites actifs</label></div>
+      <div class="row"><input type="checkbox" id="c-bodacc" checked><span class="dot b"></span><label for="c-bodacc">Procédures collectives (BODACC)</label></div>
+    </div>
+
+    <div class="panel">
+      <h2>Qu'est-ce qu'un site industriel ?</h2>
+      <div class="def">
+        Ici, un site industriel = un établissement dont l'activité principale relève de l'<b>industrie manufacturière</b> (section C de la nomenclature INSEE/NAF, divisions 10 à 33) : la <b>fabrication</b> et la <b>transformation</b> de biens.
+        <div class="chips">
+          <span class="chip">Agroalimentaire</span><span class="chip">Boissons</span><span class="chip">Textile</span>
+          <span class="chip">Bois / papier</span><span class="chip">Chimie / plasturgie</span><span class="chip">Métallurgie</span>
+          <span class="chip">Verre / matériaux</span><span class="chip">Machines / équipements</span><span class="chip">Matériel de transport</span>
+        </div>
+        <div class="chips">
+          <span class="chip no">✕ Commerce</span><span class="chip no">✕ Construction / BTP</span>
+          <span class="chip no">✕ Énergie</span><span class="chip no">✕ Services</span>
+        </div>
+        On compte les <b>établissements</b> (sites physiques), pas les sièges : une usine et son siège lointain sont distingués.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>À garder en tête</h2>
+      <div class="note">
+        <b>Créations & fermetures</b> : couvertes et gratuites (registre INSEE).<br>
+        <b>Investissements / extensions</b> de sites déjà en place : <b>invisibles</b> ici — veille presse à la main.<br>
+        Biais de survivance : les années récentes sont mieux couvertes que le début de période.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Sources</h2>
+      <div class="src">
+        <a href="https://recherche-entreprises.api.gouv.fr" target="_blank">Recherche d'entreprises</a> (DINUM) · <a href="https://bodacc-datadila.opendatasoft.com" target="_blank">BODACC</a> (DILA)<br>
+        <a href="https://github.com/etalab/decoupage-administratif" target="_blank">Découpage administratif</a> (Etalab) · <a href="https://geo.api.gouv.fr" target="_blank">API Géo</a><br>
+        Fond de carte <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div id="modal">
+  <div class="mcard">
+    <div class="mhead">
+      <h3 id="mtitle">Entreprises industrielles</h3>
+      <button class="x" id="mclose">×</button>
+    </div>
+    <div class="mbody"><table id="tbl"></table></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const NOW=new Date().getFullYear(), Y0=NOW-10;
+const TRANCHE={"NN":"n.c.","00":"0","01":"1-2","02":"3-5","03":"6-9","11":"10-19","12":"20-49","21":"50-99","22":"100-199","31":"200-249","32":"250-499","41":"500-999","42":"1000-1999","51":"2000-4999","52":"5000+"};
+const $=id=>document.getElementById(id);
+const yearOf=d=>d?parseInt(String(d).slice(0,4),10):null;
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+const map=L.map('map',{scrollWheelZoom:true}).setView([46.6,2.4],6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+
+let ARR=[];              // arrondissements [{code,departement,nom}]
+let COMMUNE2ARR=null;    // {codeCommune: codeArr} (chargé une fois)
+let DEPTCACHE={};        // dep -> {code:{nom,lat,lon,cps:[]}}
+let ETABS=[], BODACC=[], ZONE=null;
+
+// ---------- Init référentiels ----------
+async function init(){
+  initYears();
+  try{
+    const r=await fetch('https://unpkg.com/@etalab/decoupage-administratif/data/arrondissements.json');
+    ARR=await r.json();
+  }catch(e){ $('status').textContent="Impossible de charger la liste des arrondissements."; return; }
+  let dn={};
+  try{ const r2=await fetch('https://geo.api.gouv.fr/departements?fields=nom'); (await r2.json()).forEach(d=>dn[d.code]=d.nom); }catch(e){}
+  const deps=[...new Set(ARR.map(a=>a.departement))].sort();
+  deps.forEach(d=>$('dep').add(new Option(dn[d]?`${d} — ${dn[d]}`:('Département '+d),d)));
+  $('dep').addEventListener('change',fillArr);
+  $('arr').addEventListener('change',zoomToArr);
+  $('load').addEventListener('click',loadZone);
+  ['ymin','ymax','c-crea','c-ferm','c-actif','c-bodacc'].forEach(id=>$(id).addEventListener('change',render));
+  $('btn-list').addEventListener('click',openList);
+  $('btn-csv').addEventListener('click',exportCSV);
+  $('mclose').addEventListener('click',()=>$('modal').classList.remove('open'));
+  $('modal').addEventListener('click',e=>{if(e.target.id==='modal')$('modal').classList.remove('open');});
+}
+
+// ---------- Liste + export ----------
+let sortState={k:'name',asc:true};
+function rows(){
+  return ETABS.map(e=>({
+    name:e.name, siren:e.siren, commune:e.commune||'', naf:e.naf||'',
+    eff:e.eff||'', etat:e.etat, crea:e.ycrea||'', ferm:e.yferm||'', enseigne:e.enseigne||'',
+    lat:e.lat!=null?e.lat:'', lon:e.lon!=null?e.lon:''
+  }));
+}
+function openList(){
+  if(!ETABS.length){ $('status').textContent='Charge d\'abord une zone.'; return; }
+  $('mtitle').textContent=`Entreprises industrielles — ${ZONE?ZONE.arrName:''} (${ETABS.length})`;
+  buildTable(); $('modal').classList.add('open');
+}
+function buildTable(){
+  const cols=[['name','Nom'],['commune','Commune'],['naf','NAF'],['eff','Effectif'],['etat','État'],['crea','Créée'],['ferm','Fermée'],['siren','SIREN']];
+  const data=rows().sort((a,b)=>{
+    let x=a[sortState.k],y=b[sortState.k];
+    if(typeof x==='string')x=x.toLowerCase(),y=(''+y).toLowerCase();
+    return (x>y?1:x<y?-1:0)*(sortState.asc?1:-1);
+  });
+  let h='<thead><tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]}${sortState.k===c[0]?(sortState.asc?' ▲':' ▼'):''}</th>`).join('')+'</tr></thead><tbody>';
+  data.forEach(r=>{
+    h+=`<tr><td class="wrap"><b>${r.name}</b>${r.enseigne?` — ${r.enseigne}`:''}</td>`+
+       `<td>${r.commune}</td><td>${r.naf}</td><td>${r.eff}</td>`+
+       `<td><span class="tag ${r.etat==='C'?'c':'a'}">${r.etat==='C'?'cessé':'actif'}</span></td>`+
+       `<td>${r.crea}</td><td>${r.ferm}</td>`+
+       `<td>${r.siren?`<a href="https://annuaire-entreprises.data.gouv.fr/entreprise/${r.siren}" target="_blank">${r.siren} ↗</a>`:''}</td></tr>`;
+  });
+  const t=$('tbl'); t.innerHTML=h+'</tbody>';
+  t.querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{
+    const k=th.dataset.k; sortState.asc=(sortState.k===k)?!sortState.asc:true; sortState.k=k; buildTable();
+  }));
+}
+function exportCSV(){
+  if(!ETABS.length){ $('status').textContent='Charge d\'abord une zone.'; return; }
+  const head=['Nom','Enseigne','SIREN','Commune','NAF','Effectif','Etat','Annee_creation','Annee_fermeture','Latitude','Longitude'];
+  const esc=v=>{v=(v==null?'':''+v).replace(/"/g,'""'); return /[;"\n]/.test(v)?`"${v}"`:v;};
+  const lines=[head.join(';')];
+  rows().forEach(r=>lines.push([r.name,r.enseigne,r.siren,r.commune,r.naf,r.eff,r.etat==='C'?'cessé':'actif',r.crea,r.ferm,r.lat,r.lon].map(esc).join(';')));
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  const z=ZONE?`${ZONE.arrName}-${ZONE.dep}`.replace(/[^\w-]+/g,'_'):'zone';
+  a.download=`industrie-${z}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+function initYears(){for(let y=Y0;y<=NOW;y++){$('ymin').add(new Option(y,y));$('ymax').add(new Option(y,y));}$('ymin').value=Y0;$('ymax').value=NOW;}
+function fillArr(){
+  const d=$('dep').value; const s=$('arr'); s.innerHTML='<option value="">Arrondissement…</option>';
+  ARR.filter(a=>a.departement===d).sort((a,b)=>a.nom.localeCompare(b.nom))
+     .forEach(a=>s.add(new Option(a.nom,a.code)));
+}
+async function zoomToArr(){
+  const code=$('arr').value; if(!code) return;
+  const a=ARR.find(x=>x.code===code); if(!a||!a.chefLieu) return;
+  try{
+    const r=await fetch(`https://geo.api.gouv.fr/communes/${a.chefLieu}?fields=centre`);
+    const c=await r.json(); const ll=c.centre&&c.centre.coordinates;
+    if(ll) map.setView([ll[1],ll[0]],11,{animate:true});
+  }catch(e){}
+}
+
+// ---------- Chargement d'une zone ----------
+async function ensureCommune2Arr(){
+  if(COMMUNE2ARR) return;
+  $('status').textContent='Chargement du référentiel des communes (une seule fois)…';
+  const r=await fetch('https://unpkg.com/@etalab/decoupage-administratif/data/communes.json');
+  const arr=await r.json(); COMMUNE2ARR={};
+  arr.forEach(c=>{ if(c.arrondissement) COMMUNE2ARR[c.code]=c.arrondissement; });
+}
+async function ensureDept(dep){
+  if(DEPTCACHE[dep]) return DEPTCACHE[dep];
+  const r=await fetch(`https://geo.api.gouv.fr/communes?codeDepartement=${dep}&fields=nom,code,codesPostaux,centre&format=json`);
+  const arr=await r.json(); const m={};
+  arr.forEach(c=>{ const ll=c.centre&&c.centre.coordinates; m[c.code]={nom:c.nom,lat:ll?ll[1]:null,lon:ll?ll[0]:null,cps:c.codesPostaux||[]}; });
+  DEPTCACHE[dep]=m; return m;
+}
+
+async function loadZone(){
+  const dep=$('dep').value, arrCode=$('arr').value;
+  if(!dep||!arrCode){ $('status').textContent='Choisis un département et un arrondissement.'; return; }
+  const arrName=(ARR.find(a=>a.code===arrCode)||{}).nom||arrCode;
+  ZONE={dep,arrCode,arrName};
+  $('load').disabled=true; $('ztitle').textContent=arrName;
+  try{
+    await ensureCommune2Arr();
+    const deptCom=await ensureDept(dep);
+    // communes de l'arrondissement
+    const communes=Object.keys(deptCom).filter(c=>COMMUNE2ARR[c]===arrCode);
+    const communeSet=new Set(communes);
+    // recentrage immédiat sur l'arrondissement
+    const pts=communes.map(c=>deptCom[c]).filter(x=>x.lat).map(x=>[x.lat,x.lon]);
+    if(pts.length){const b=L.latLngBounds(pts); if(b.isValid()) map.fitBounds(b.pad(0.12));}
+    const cpSet=new Set(); communes.forEach(c=>deptCom[c].cps.forEach(cp=>cpSet.add(cp)));
+    if(!communes.length){ $('status').textContent='Aucune commune trouvée pour cet arrondissement.'; $('load').disabled=false; return; }
+
+    ETABS=[]; const seen=new Set();
+    const CHUNK=20;
+    for(let i=0;i<communes.length;i+=CHUNK){
+      const grp=communes.slice(i,i+CHUNK).join(',');
+      $('status').textContent=`Chargement des sites… (${Math.min(i+CHUNK,communes.length)}/${communes.length} communes)`;
+      for(const etat of ['A','C']){ await fetchEtabs(grp,etat,communeSet,deptCom,seen); }
+    }
+    $('status').textContent='Chargement des procédures BODACC…';
+    await loadBodacc(dep,cpSet,deptCom);
+    render();
+    $('status').textContent=`${ETABS.length} sites industriels · ${BODACC.length} procédures récentes · ${arrName} (${dep}).`;
+  }catch(e){ console.error(e); $('status').textContent='Erreur de chargement : '+e.message; }
+  $('load').disabled=false;
+}
+
+async function fetchEtabs(grp,etat,communeSet,deptCom,seen){
+  let page=1,pages=1;
+  do{
+    const url=`https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&code_commune=${grp}&etat_administratif=${etat}&per_page=25&page=${page}`;
+    let j; try{const r=await fetch(url); if(!r.ok)break; j=await r.json();}catch(e){break;}
+    pages=Math.min(j.total_pages||1,10);
+    (j.results||[]).forEach(e=>{
+      const list=(e.matching_etablissements||[]).slice();
+      if(e.siege&&communeSet.has(e.siege.commune)) list.push(e.siege);
+      list.forEach(et=>{
+        if(!communeSet.has(et.commune)) return;
+        const key=et.siret||e.siren+et.commune; if(seen.has(key))return; seen.add(key);
+        const cc=deptCom[et.commune]||{};
+        ETABS.push({name:e.nom_complet,siren:e.siren,
+          enseigne:(et.liste_enseignes&&et.liste_enseignes[0])||null,
+          naf:et.activite_principale||e.activite_principale,
+          commune:et.libelle_commune||cc.nom,
+          lat:et.latitude?+et.latitude:cc.lat, lon:et.longitude?+et.longitude:cc.lon,
+          eff:TRANCHE[et.tranche_effectif_salarie]||'n.c.', etat:et.etat_administratif,
+          ycrea:yearOf(et.date_creation), yferm:yearOf(et.date_fermeture)});
+      });
+    });
+    page++;
+  }while(page<=pages);
+}
+
+async function loadBodacc(dep,cpSet,deptCom){
+  BODACC=[];
+  try{
+    const where=encodeURIComponent(`numerodepartement="${dep}" and familleavis="collective"`);
+    const url=`https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=${where}&order_by=dateparution%20desc&limit=150`;
+    const r=await fetch(url); if(!r.ok)return; const j=await r.json();
+    // index cp -> centre (première commune trouvée)
+    const cpCentre={}; Object.values(deptCom).forEach(c=>c.cps.forEach(cp=>{if(!cpCentre[cp]&&c.lat)cpCentre[cp]=[c.lat,c.lon];}));
+    (j.results||[]).forEach(a=>{
+      if(!cpSet.has(a.cp)) return;
+      let nat=''; try{nat=(JSON.parse(a.jugement||'{}').nature)||'';}catch(e){}
+      if(!/liquidation|redressement|sauvegarde|ouverture/i.test(nat)) return;
+      const ll=cpCentre[a.cp]; if(!ll) return;
+      BODACC.push({commercant:a.commercant,ville:a.ville,cp:a.cp,nature:nat,date:a.dateparution,url:a.url_complete,lat:ll[0],lon:ll[1]});
+    });
+  }catch(e){console.warn('bodacc',e);}
+}
+
+// ---------- Rendu ----------
+const chk=id=>$(id).checked;
+function cm(lat,lon,color,r,html){if(lat==null)return;const m=L.circleMarker([lat,lon],{radius:r,color:'#fff',weight:2,fillColor:color,fillOpacity:.95});m.bindPopup(html);m.addTo(layer);}
+function annu(s){return s?`<br><a href="https://annuaire-entreprises.data.gouv.fr/entreprise/${s}" target="_blank">Fiche entreprise ↗</a>`:''}
+function pop(e,t){const s=t==='ferm'?`Fermé en ${e.yferm}`:t==='crea'?`Créé en ${e.ycrea}`:'Actif';
+  return `<div class="lp"><b>${e.name}</b>${e.enseigne?` <span class="pill">${e.enseigne}</span>`:''}<br>${e.commune||''} — NAF ${e.naf||'?'}<br>Effectif : ${e.eff} · ${s}${annu(e.siren)}</div>`;}
+
+function render(){
+  layer.clearLayers();
+  const yMin=+$('ymin').value,yMax=+$('ymax').value;
+  const sh={crea:chk('c-crea'),ferm:chk('c-ferm'),actif:chk('c-actif'),bodacc:chk('c-bodacc')};
+  let nc=0,nf=0;
+  if(sh.actif) ETABS.filter(e=>e.etat==='A').forEach(e=>cm(e.lat,e.lon,css('--grisclair'),4,pop(e,'actif')));
+  ETABS.forEach(e=>{
+    if(sh.ferm&&e.yferm&&e.yferm>=yMin&&e.yferm<=yMax){nf++;cm(e.lat,e.lon,css('--rouge'),7,pop(e,'ferm'));}
+    else if(sh.crea&&e.ycrea&&e.ycrea>=yMin&&e.ycrea<=yMax&&e.etat==='A'){nc++;cm(e.lat,e.lon,css('--vert'),7,pop(e,'crea'));}
+  });
+  if(sh.bodacc) BODACC.forEach(b=>{const j=0.004*(Math.random()-.5);
+    cm(b.lat+j,b.lon+j,css('--bleu'),6,`<div class="lp"><b>${b.commercant||'—'}</b><br>${b.ville||''} (${b.cp})<br>${b.nature}<br>Publié le ${b.date}${b.url?`<br><a href="${b.url}" target="_blank">Annonce BODACC ↗</a>`:''}</div>`);});
+  $('k-crea').textContent=nc;$('k-ferm').textContent=nf;
+  const net=nc-nf,el=$('k-net');el.textContent=(net>0?'+':'')+net;
+  el.style.color=net<0?css('--rouge'):(net>0?css('--vert'):'#1c2430');
+  drawChart(yMin,yMax);
+}
+
+function drawChart(sMin,sMax){
+  const svg=$('chart'); svg.innerHTML='';
+  const years=[];for(let y=Y0;y<=NOW;y++)years.push(y);
+  const cr={},fe={};years.forEach(y=>{cr[y]=0;fe[y]=0;});
+  ETABS.forEach(e=>{if(e.ycrea&&e.ycrea>=Y0&&e.etat==='A')cr[e.ycrea]++;if(e.yferm&&e.yferm>=Y0)fe[e.yferm]++;});
+  const W=900,H=230,pL=30,pB=24,pT=8,pR=6;
+  const maxV=Math.max(3,...years.map(y=>Math.max(cr[y],fe[y])));
+  const gw=(W-pL-pR)/years.length,bw=Math.min(15,gw/2-2);
+  const yS=v=>(H-pB)-(v/maxV)*(H-pB-pT);
+  const NS='http://www.w3.org/2000/svg';
+  const add=(t,a)=>{const el=document.createElementNS(NS,t);for(const k in a)el.setAttribute(k,a[k]);svg.appendChild(el);return el;};
+  add('line',{class:'axis',x1:pL,y1:H-pB,x2:W-pR,y2:H-pB});
+  const step=Math.ceil(maxV/4);
+  for(let i=0;i<=maxV;i+=step){const yy=yS(i);add('line',{class:'axis',x1:pL,y1:yy,x2:W-pR,y2:yy,opacity:.3});const t=add('text',{class:'glab',x:pL-4,y:yy+3,'text-anchor':'end'});t.textContent=i;}
+  years.forEach((y,i)=>{
+    const x0=pL+i*gw+(gw/2-bw-1),sel=(y>=sMin&&y<=sMax);
+    const a=add('rect',{class:'bar-c',x:x0,y:yS(cr[y]),width:bw,height:(H-pB)-yS(cr[y]),opacity:sel?1:.35});a.appendChild(tt(`${y} · ${cr[y]} création(s)`));
+    const b=add('rect',{class:'bar-f',x:x0+bw+1,y:yS(fe[y]),width:bw,height:(H-pB)-yS(fe[y]),opacity:sel?1:.35});b.appendChild(tt(`${y} · ${fe[y]} fermeture(s)`));
+    const l=add('text',{class:'gyr',x:pL+i*gw+gw/2,y:H-pB+13,'text-anchor':'middle'});l.textContent="'"+String(y).slice(2);
+  });
+  function tt(x){const t=document.createElementNS(NS,'title');t.textContent=x;return t;}
+}
+
+init();
+</script>
+</body>
+</html>
