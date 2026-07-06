@@ -327,7 +327,7 @@ async function loadZone(){
     const communes=Object.keys(deptCom).filter(c=>COMMUNE2ARR[c]===arrCode);
     const communeSet=new Set(communes);
     // recentrage immédiat sur l'arrondissement
-    const pts=communes.map(c=>deptCom[c]).filter(x=>x.lat).map(x=>[x.lat,x.lon]);
+    const pts=communes.map(c=>deptCom[c]).filter(x=>x&&Number.isFinite(x.lat)&&Number.isFinite(x.lon)).map(x=>[x.lat,x.lon]);
     if(pts.length){const b=L.latLngBounds(pts); if(b.isValid()) map.fitBounds(b.pad(0.12));}
     const cpSet=new Set(); communes.forEach(c=>deptCom[c].cps.forEach(cp=>cpSet.add(cp)));
     if(!communes.length){ $('status').textContent='Aucune commune trouvée pour cet arrondissement.'; $('load').disabled=false; return; }
@@ -393,7 +393,7 @@ async function loadBodacc(dep,cpSet,deptCom){
 
 // ---------- Rendu ----------
 const chk=id=>$(id).checked;
-function cm(lat,lon,color,r,html){if(lat==null)return;const m=L.circleMarker([lat,lon],{radius:r,color:'#fff',weight:2,fillColor:color,fillOpacity:.95});m.bindPopup(html);m.addTo(layer);}
+function cm(lat,lon,color,r,html){if(!Number.isFinite(lat)||!Number.isFinite(lon))return;const m=L.circleMarker([lat,lon],{radius:r,color:'#fff',weight:2,fillColor:color,fillOpacity:.95});m.bindPopup(html);m.addTo(layer);}
 function annu(s){return s?`<br><a href="https://annuaire-entreprises.data.gouv.fr/entreprise/${s}" target="_blank">Fiche entreprise ↗</a>`:''}
 function pop(e,t){const s=t==='ferm'?`Fermé en ${e.yferm}`:t==='crea'?`Créé en ${e.ycrea}`:'Actif';
   return `<div class="lp"><b>${e.name}</b>${e.enseigne?` <span class="pill">${e.enseigne}</span>`:''}<br>${e.commune||''} — NAF ${e.naf||'?'}<br>Effectif : ${e.eff} · ${s}${annu(e.siren)}</div>`;}
