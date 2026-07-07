@@ -157,6 +157,7 @@
         <button id="btn-list">📋 Liste</button>
         <button id="btn-csv">⬇︎ Export Excel</button>
       </div>
+      <button id="btn-rank" style="width:100%;margin-top:8px">🏆 Classer les arrondissements du département</button>
     </div>
 
     <div class="panel">
@@ -269,6 +270,7 @@ async function init(){
   $('mclose').addEventListener('click',()=>$('modal').classList.remove('open'));
   $('modal').addEventListener('click',e=>{if(e.target.id==='modal')$('modal').classList.remove('open');});
   $('btn-play').addEventListener('click',playAnim);
+  $('btn-rank').addEventListener('click',rankDepartment);
   $('btn-share').addEventListener('click',()=>{
     const u=location.origin+location.pathname+(ZONE?`?dep=${ZONE.dep}&arr=${ZONE.arrCode}`:'');
     navigator.clipboard.writeText(u).then(()=>{$('status').textContent='✓ Lien copié : '+u;},()=>{$('status').textContent=u;});
@@ -391,7 +393,8 @@ async function loadZone(){
   $('load').disabled=false;
 }
 
-async function fetchEtabs(grp,etat,communeSet,deptCom,seen){
+async function fetchEtabs(grp,etat,communeSet,deptCom,seen,target){
+  target=target||ETABS;
   let page=1,pages=1;
   do{
     const url=`https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&code_commune=${grp}&etat_administratif=${etat}&per_page=25&page=${page}`;
@@ -404,7 +407,7 @@ async function fetchEtabs(grp,etat,communeSet,deptCom,seen){
         if(!communeSet.has(et.commune)) return;
         const key=et.siret||e.siren+et.commune; if(seen.has(key))return; seen.add(key);
         const cc=deptCom[et.commune]||{};
-        ETABS.push({name:e.nom_complet,siren:e.siren,
+        target.push({name:e.nom_complet,siren:e.siren,
           enseigne:(et.liste_enseignes&&et.liste_enseignes[0])||null,
           naf:et.activite_principale||e.activite_principale,
           commune:et.libelle_commune||cc.nom,
@@ -415,6 +418,52 @@ async function fetchEtabs(grp,etat,communeSet,deptCom,seen){
     });
     page++;
   }while(page<=pages);
+}
+
+// ---------- Classement des arrondissements d'un département ----------
+let RANKCACHE={};
+async function countZone(dep,arrCode,deptCom){
+  const communes=Object.keys(deptCom).filter(c=>COMMUNE2ARR[c]===arrCode);
+  const communeSet=new Set(communes);
+  const arr=[]; const seen=new Set(); const CHUNK=20;
+  for(let i=0;i<communes.length;i+=CHUNK){
+    const grp=communes.slice(i,i+CHUNK).join(',');
+    for(const etat of ['A','C']){ await fetchEtabs(grp,etat,communeSet,deptCom,seen,arr); }
+  }
+  let nc=0,nf=0;
+  arr.forEach(e=>{ if(e.yferm&&e.yferm>=Y0&&e.yferm<=NOW)nf++; else if(e.ycrea&&e.ycrea>=Y0&&e.ycrea<=NOW&&e.etat==='A')nc++; });
+  return {nc,nf,net:nc-nf,total:arr.length};
+}
+async function rankDepartment(){
+  const dep=(ZONE&&ZONE.dep)||$('dep').value;
+  if(!dep){ $('status').textContent='Choisis d\'abord un département.'; return; }
+  const depName=($('dep').selectedOptions[0]&&$('dep').selectedOptions[0].textContent)||dep;
+  if(RANKCACHE[dep]){ showRanking(depName,RANKCACHE[dep]); return; }
+  $('btn-rank').disabled=true;
+  try{
+    await ensureCommune2Arr(); const deptCom=await ensureDept(dep);
+    const arrs=ARR.filter(a=>a.departement===dep).sort((a,b)=>a.nom.localeCompare(b.nom));
+    const rows=[];
+    for(let i=0;i<arrs.length;i++){
+      $('status').textContent=`Classement en cours… ${i+1}/${arrs.length} — ${arrs[i].nom}`;
+      const r=await countZone(dep,arrs[i].code,deptCom);
+      rows.push({nom:arrs[i].nom,code:arrs[i].code,nc:r.nc,nf:r.nf,net:r.net,total:r.total});
+    }
+    rows.sort((a,b)=>b.net-a.net);
+    RANKCACHE[dep]=rows;
+    showRanking(depName,rows);
+    $('status').textContent=`Classement du ${dep} prêt (${rows.length} arrondissements).`;
+  }catch(e){ console.error(e); $('status').textContent='Erreur classement : '+e.message; }
+  $('btn-rank').disabled=false;
+}
+function showRanking(depName,rows){
+  $('mtitle').textContent=`Classement des arrondissements — ${depName}`;
+  let h='<thead><tr><th>#</th><th>Arrondissement</th><th>Solde net</th><th>Créations</th><th>Fermetures</th><th>Sites</th><th></th></tr></thead><tbody>';
+  rows.forEach((r,i)=>{const col=r.net<0?'var(--rouge)':r.net>0?'var(--vert)':'inherit';
+    h+=`<tr><td>${i+1}</td><td class="wrap"><b>${r.nom}</b></td><td style="color:${col};font-weight:700">${r.net>0?'+':''}${r.net}</td><td>${r.nc}</td><td>${r.nf}</td><td>${r.total}</td><td><a href="#" data-code="${r.code}" class="openarr">Ouvrir ↗</a></td></tr>`;});
+  $('tbl').innerHTML=h+'</tbody>';
+  $('tbl').querySelectorAll('.openarr').forEach(a=>a.addEventListener('click',ev=>{ev.preventDefault();const code=a.dataset.code;$('modal').classList.remove('open');$('arr').value=code;zoomToArr();loadZone();}));
+  $('modal').classList.add('open');
 }
 
 async function loadBodacc(dep,cpSet,deptCom){
