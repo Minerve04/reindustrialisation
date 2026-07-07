@@ -393,12 +393,21 @@ async function loadZone(){
   $('load').disabled=false;
 }
 
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function jget(url){
+  for(let a=0;a<5;a++){
+    try{ const r=await fetch(url); if(r.status===429||r.status===503||r.status===502){await sleep(700*(a+1));continue;} if(!r.ok)return null; return await r.json(); }
+    catch(e){ await sleep(400); }
+  }
+  return null;
+}
 async function fetchEtabs(grp,etat,communeSet,deptCom,seen,target){
   target=target||ETABS;
   let page=1,pages=1;
   do{
     const url=`https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&code_commune=${grp}&etat_administratif=${etat}&per_page=25&page=${page}`;
-    let j; try{const r=await fetch(url); if(!r.ok)break; j=await r.json();}catch(e){break;}
+    const j=await jget(url); if(!j)break;
+    await sleep(60);
     pages=Math.min(j.total_pages||1,10);
     (j.results||[]).forEach(e=>{
       const list=(e.matching_etablissements||[]).slice();
