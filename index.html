@@ -146,11 +146,13 @@
     <div class="panel">
       <h2>Volume sur la période</h2>
       <div class="yr">de <select id="ymin"></select> à <select id="ymax"></select></div>
+      <button id="btn-play" style="width:100%;margin-top:10px">▶ Animer 2016 → 2026</button>
       <div class="kpi" style="margin-top:12px">
         <div><div class="n" id="k-crea" style="color:var(--vert)">–</div><div class="l">Créations</div></div>
         <div><div class="n" id="k-ferm" style="color:var(--rouge)">–</div><div class="l">Fermetures</div></div>
         <div><div class="n" id="k-net">–</div><div class="l">Solde net</div></div>
       </div>
+      <div id="insight" style="font-size:12px;color:var(--ink-2);margin-top:10px;line-height:1.45"></div>
       <div class="btns" style="margin-top:12px">
         <button id="btn-list">📋 Liste</button>
         <button id="btn-csv">⬇︎ Export Excel</button>
@@ -218,6 +220,22 @@ const NOW=new Date().getFullYear(), Y0=NOW-10;
 const TRANCHE={"NN":"n.c.","00":"0","01":"1-2","02":"3-5","03":"6-9","11":"10-19","12":"20-49","21":"50-99","22":"100-199","31":"200-249","32":"250-499","41":"500-999","42":"1000-1999","51":"2000-4999","52":"5000+"};
 const EFFMID={"00":0,"01":1.5,"02":4,"03":7,"11":14,"12":34,"21":74,"22":149,"31":224,"32":374,"41":749,"42":1499,"51":3499,"52":7500};
 function rad(tr){const m=EFFMID[tr];if(m==null)return 5;return Math.max(5,Math.min(22,4.5+0.22*Math.sqrt(m)));}
+const DIV={"10":"agroalimentaire","11":"boissons","13":"textile","14":"habillement","15":"cuir","16":"bois","17":"papier","18":"imprimerie","19":"raffinage","20":"chimie","21":"pharmacie","22":"plasturgie","23":"verre & matériaux","24":"métallurgie","25":"produits métalliques","26":"électronique","27":"équip. électriques","28":"machines","29":"automobile","30":"autre transport","31":"meuble","32":"autres industries","33":"réparation/installation"};
+function divLabel(naf){return naf?DIV[String(naf).slice(0,2)]:null;}
+// ← Remplace par l'URL de ton outil « Mes Droits Audomarois » quand il est en ligne :
+const DROITS_URL="https://www.service-public.fr/particuliers/vosdroits/F1994";
+// ---------- Animation temporelle ----------
+let animTimer=null;
+function stopAnim(){if(animTimer){clearInterval(animTimer);animTimer=null;}$('btn-play').textContent='▶ Animer 2016 → 2026';}
+function playAnim(){
+  if(animTimer){stopAnim();$('ymin').value=Y0;$('ymax').value=NOW;render();if(ZONE)$('ztitle').textContent=ZONE.arrName;return;}
+  if(!ETABS.length){$('status').textContent='Charge d\'abord une zone.';return;}
+  $('btn-play').textContent='⏸ Pause';
+  let y=Y0;
+  const step=()=>{$('ymin').value=y;$('ymax').value=y;render();$('ztitle').textContent=(ZONE?ZONE.arrName+' · ':'')+y;
+    if(y>=NOW){stopAnim();setTimeout(()=>{$('ymin').value=Y0;$('ymax').value=NOW;render();if(ZONE)$('ztitle').textContent=ZONE.arrName;},800);}else{y++;}};
+  step();animTimer=setInterval(step,950);
+}
 const $=id=>document.getElementById(id);
 const yearOf=d=>d?parseInt(String(d).slice(0,4),10):null;
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -250,6 +268,7 @@ async function init(){
   $('btn-csv').addEventListener('click',exportCSV);
   $('mclose').addEventListener('click',()=>$('modal').classList.remove('open'));
   $('modal').addEventListener('click',e=>{if(e.target.id==='modal')$('modal').classList.remove('open');});
+  $('btn-play').addEventListener('click',playAnim);
   $('btn-share').addEventListener('click',()=>{
     const u=location.origin+location.pathname+(ZONE?`?dep=${ZONE.dep}&arr=${ZONE.arrCode}`:'');
     navigator.clipboard.writeText(u).then(()=>{$('status').textContent='✓ Lien copié : '+u;},()=>{$('status').textContent=u;});
@@ -421,14 +440,15 @@ const chk=id=>$(id).checked;
 function cm(lat,lon,color,r,html){if(!Number.isFinite(lat)||!Number.isFinite(lon))return;const m=L.circleMarker([lat,lon],{radius:r,color:'#fff',weight:2,fillColor:color,fillOpacity:.95});m.bindPopup(html);m.addTo(layer);}
 function annu(s){return s?`<br><a href="https://annuaire-entreprises.data.gouv.fr/entreprise/${s}" target="_blank">Fiche entreprise ↗</a>`:''}
 function pop(e,t){const s=t==='ferm'?`Fermé en ${e.yferm}`:t==='crea'?`Créé en ${e.ycrea}`:'Actif';
-  return `<div class="lp"><b>${e.name}</b>${e.enseigne?` <span class="pill">${e.enseigne}</span>`:''}<br>${e.commune||''} — NAF ${e.naf||'?'}<br>Effectif : ${e.eff} · ${s}${annu(e.siren)}</div>`;}
+  const droits=t==='ferm'?`<br><a href="${DROITS_URL}" target="_blank">Salarié concerné ? Vos droits (CSP, ARE…) ↗</a>`:'';
+  return `<div class="lp"><b>${e.name}</b>${e.enseigne?` <span class="pill">${e.enseigne}</span>`:''}<br>${e.commune||''} — NAF ${e.naf||'?'}<br>Effectif : ${e.eff} · ${s}${annu(e.siren)}${droits}</div>`;}
 
 function render(){
   layer.clearLayers();
   const yMin=+$('ymin').value,yMax=+$('ymax').value;
   const sh={crea:chk('c-crea'),ferm:chk('c-ferm'),actif:chk('c-actif'),bodacc:chk('c-bodacc')};
   let nc=0,nf=0;
-  if(sh.actif) ETABS.filter(e=>e.etat==='A').forEach(e=>cm(e.lat,e.lon,css('--grisclair'),4,pop(e,'actif')));
+  if(sh.actif) ETABS.filter(e=>e.etat==='A').forEach(e=>cm(e.lat,e.lon,css('--muted'),4,pop(e,'actif')));
   ETABS.forEach(e=>{
     if(sh.ferm&&e.yferm&&e.yferm>=yMin&&e.yferm<=yMax){nf++;cm(e.lat,e.lon,css('--rouge'),rad(e.efftr),pop(e,'ferm'));}
     else if(sh.crea&&e.ycrea&&e.ycrea>=yMin&&e.ycrea<=yMax&&e.etat==='A'){nc++;cm(e.lat,e.lon,css('--vert'),rad(e.efftr),pop(e,'crea'));}
@@ -437,7 +457,13 @@ function render(){
     cm(b.lat+j,b.lon+j,css('--bleu'),6,`<div class="lp"><b>${b.commercant||'—'}</b><br>${b.ville||''} (${b.cp})<br>${b.nature}<br>Publié le ${b.date}${b.url?`<br><a href="${b.url}" target="_blank">Annonce BODACC ↗</a>`:''}</div>`);});
   $('k-crea').textContent=nc;$('k-ferm').textContent=nf;
   const net=nc-nf,el=$('k-net');el.textContent=(net>0?'+':'')+net;
-  el.style.color=net<0?css('--rouge'):(net>0?css('--vert'):'#1c2430');
+  el.style.color=net<0?css('--rouge'):(net>0?css('--vert'):'#141726');
+  // Phrase d'insight (secteur dominant sur la période)
+  const sect={};
+  ETABS.forEach(e=>{const ic=e.ycrea&&e.ycrea>=yMin&&e.ycrea<=yMax&&e.etat==='A';const iff=e.yferm&&e.yferm>=yMin&&e.yferm<=yMax;if(ic||iff){const d=divLabel(e.naf);if(d)sect[d]=(sect[d]||0)+1;}});
+  let top=null,tv=0;for(const k in sect)if(sect[k]>tv){tv=sect[k];top=k;}
+  if(ETABS.length){const tone=net<0?'perd de l\'industrie':net>0?'en gagne':'à l\'équilibre';
+    $('insight').innerHTML=`Sur ${yMin}–${yMax}, solde net <b style="color:${net<0?'var(--rouge)':net>0?'var(--vert)':'inherit'}">${net>0?'+':''}${net}</b> — le territoire ${tone}${top?`, surtout en <b>${top}</b>.`:'.'}`;}
   drawChart(yMin,yMax);
 }
 
