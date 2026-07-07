@@ -4,6 +4,17 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Cartographie de l'industrie — par arrondissement (France)</title>
+<meta name="description" content="Cartographie interactive de l'industrie française par arrondissement : créations, fermetures et procédures collectives d'usines. Données publiques, en direct.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cartographie de l'industrie — par arrondissement">
+<meta property="og:description" content="Sites industriels créés et fermés, procédures collectives, par arrondissement. Données publiques, en direct.">
+<meta property="og:url" content="https://minerve04.github.io/reindustrialisation/">
+<meta property="og:image" content="https://minerve04.github.io/reindustrialisation/og-image.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cartographie de l'industrie — par arrondissement">
+<meta name="twitter:description" content="Créations, fermetures et procédures collectives industrielles, par arrondissement.">
+<meta name="twitter:image" content="https://minerve04.github.io/reindustrialisation/og-image.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -129,6 +140,7 @@
       <select id="arr"><option value="">Arrondissement…</option></select>
       <button id="load" class="primary">Charger la zone</button>
       <div id="status">Sélectionne une zone pour commencer.</div>
+      <button id="btn-share" style="width:100%;margin-top:8px">🔗 Copier le lien de cette zone</button>
     </div>
 
     <div class="panel">
@@ -151,6 +163,7 @@
       <div class="row"><input type="checkbox" id="c-ferm" checked><span class="dot r"></span><label for="c-ferm">Fermetures (période)</label></div>
       <div class="row"><input type="checkbox" id="c-actif"><span class="dot g"></span><label for="c-actif">Tous les sites actifs</label></div>
       <div class="row"><input type="checkbox" id="c-bodacc" checked><span class="dot b"></span><label for="c-bodacc">Procédures collectives (BODACC)</label></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:9px;line-height:1.4">Taille des points ∝ nombre d'emplois du site.</div>
     </div>
 
     <div class="panel">
@@ -203,6 +216,8 @@
 <script>
 const NOW=new Date().getFullYear(), Y0=NOW-10;
 const TRANCHE={"NN":"n.c.","00":"0","01":"1-2","02":"3-5","03":"6-9","11":"10-19","12":"20-49","21":"50-99","22":"100-199","31":"200-249","32":"250-499","41":"500-999","42":"1000-1999","51":"2000-4999","52":"5000+"};
+const EFFMID={"00":0,"01":1.5,"02":4,"03":7,"11":14,"12":34,"21":74,"22":149,"31":224,"32":374,"41":749,"42":1499,"51":3499,"52":7500};
+function rad(tr){const m=EFFMID[tr];if(m==null)return 5;return Math.max(5,Math.min(22,4.5+0.22*Math.sqrt(m)));}
 const $=id=>document.getElementById(id);
 const yearOf=d=>d?parseInt(String(d).slice(0,4),10):null;
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -235,6 +250,15 @@ async function init(){
   $('btn-csv').addEventListener('click',exportCSV);
   $('mclose').addEventListener('click',()=>$('modal').classList.remove('open'));
   $('modal').addEventListener('click',e=>{if(e.target.id==='modal')$('modal').classList.remove('open');});
+  $('btn-share').addEventListener('click',()=>{
+    const u=location.origin+location.pathname+(ZONE?`?dep=${ZONE.dep}&arr=${ZONE.arrCode}`:'');
+    navigator.clipboard.writeText(u).then(()=>{$('status').textContent='✓ Lien copié : '+u;},()=>{$('status').textContent=u;});
+  });
+  const q=new URLSearchParams(location.search);
+  if(q.get('ymin'))$('ymin').value=q.get('ymin');
+  if(q.get('ymax'))$('ymax').value=q.get('ymax');
+  const qd=q.get('dep'), qa=q.get('arr');
+  if(qd){ $('dep').value=qd; fillArr(); if(qa){ $('arr').value=qa; zoomToArr(); loadZone(); } }
 }
 
 // ---------- Liste + export ----------
@@ -342,6 +366,7 @@ async function loadZone(){
     $('status').textContent='Chargement des procédures BODACC…';
     await loadBodacc(dep,cpSet,deptCom);
     render();
+    try{history.replaceState(null,'',`?dep=${dep}&arr=${arrCode}`);}catch(e){}
     $('status').textContent=`${ETABS.length} sites industriels · ${BODACC.length} procédures récentes · ${arrName} (${dep}).`;
   }catch(e){ console.error(e); $('status').textContent='Erreur de chargement : '+e.message; }
   $('load').disabled=false;
@@ -365,7 +390,7 @@ async function fetchEtabs(grp,etat,communeSet,deptCom,seen){
           naf:et.activite_principale||e.activite_principale,
           commune:et.libelle_commune||cc.nom,
           lat:et.latitude?+et.latitude:cc.lat, lon:et.longitude?+et.longitude:cc.lon,
-          eff:TRANCHE[et.tranche_effectif_salarie]||'n.c.', etat:et.etat_administratif,
+          eff:TRANCHE[et.tranche_effectif_salarie]||'n.c.', efftr:et.tranche_effectif_salarie, etat:et.etat_administratif,
           ycrea:yearOf(et.date_creation), yferm:yearOf(et.date_fermeture)});
       });
     });
@@ -405,8 +430,8 @@ function render(){
   let nc=0,nf=0;
   if(sh.actif) ETABS.filter(e=>e.etat==='A').forEach(e=>cm(e.lat,e.lon,css('--grisclair'),4,pop(e,'actif')));
   ETABS.forEach(e=>{
-    if(sh.ferm&&e.yferm&&e.yferm>=yMin&&e.yferm<=yMax){nf++;cm(e.lat,e.lon,css('--rouge'),7,pop(e,'ferm'));}
-    else if(sh.crea&&e.ycrea&&e.ycrea>=yMin&&e.ycrea<=yMax&&e.etat==='A'){nc++;cm(e.lat,e.lon,css('--vert'),7,pop(e,'crea'));}
+    if(sh.ferm&&e.yferm&&e.yferm>=yMin&&e.yferm<=yMax){nf++;cm(e.lat,e.lon,css('--rouge'),rad(e.efftr),pop(e,'ferm'));}
+    else if(sh.crea&&e.ycrea&&e.ycrea>=yMin&&e.ycrea<=yMax&&e.etat==='A'){nc++;cm(e.lat,e.lon,css('--vert'),rad(e.efftr),pop(e,'crea'));}
   });
   if(sh.bodacc) BODACC.forEach(b=>{const j=0.004*(Math.random()-.5);
     cm(b.lat+j,b.lon+j,css('--bleu'),6,`<div class="lp"><b>${b.commercant||'—'}</b><br>${b.ville||''} (${b.cp})<br>${b.nature}<br>Publié le ${b.date}${b.url?`<br><a href="${b.url}" target="_blank">Annonce BODACC ↗</a>`:''}</div>`);});
